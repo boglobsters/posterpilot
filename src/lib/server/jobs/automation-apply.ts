@@ -18,10 +18,14 @@ import {
 
 const CHUNK = 500;
 
-/** Item ids, among those just discovered, that an automation may apply artwork to. */
+/**
+ * Item ids an automation may apply artwork to. With `beforeDiscovery`, the items worth
+ * searching at all (the same rules, without requiring candidates to exist yet).
+ */
 export async function selectAutoApplyItemIds(
 	serverInstanceId: string,
-	itemIds: number[]
+	itemIds: number[],
+	options: { beforeDiscovery?: boolean } = {}
 ): Promise<number[]> {
 	const eligible: number[] = [];
 	for (let offset = 0; offset < itemIds.length; offset += CHUNK) {
@@ -72,11 +76,14 @@ export async function selectAutoApplyItemIds(
 			).map((row) => row.id)
 		);
 		for (const row of rows) {
-			const reason = autoApplySkipReason({
-				...row,
-				hasChildSelections: picked.has(row.id),
-				hasSuccessfulApply: applied.has(row.id)
-			});
+			const reason = autoApplySkipReason(
+				{
+					...row,
+					hasChildSelections: picked.has(row.id),
+					hasSuccessfulApply: applied.has(row.id)
+				},
+				options
+			);
 			if (reason === null) eligible.push(row.id);
 		}
 	}

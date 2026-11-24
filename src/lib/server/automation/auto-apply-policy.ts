@@ -20,14 +20,18 @@ export interface AutoApplyCandidateState {
 }
 
 export type AutoApplySkipReason =
-	| 'no_candidates'
-	| 'reviewed'
-	| 'changed_outside_posterpilot'
-	| 'hand_picked'
-	| 'already_applied';
+	'no_candidates' | 'reviewed' | 'changed_outside_posterpilot' | 'hand_picked' | 'already_applied';
 
-export function autoApplySkipReason(state: AutoApplyCandidateState): AutoApplySkipReason | null {
-	if (!state.hasCandidates) return 'no_candidates';
+/**
+ * Why an automation would leave this item alone, or null if it may apply artwork.
+ * `beforeDiscovery` asks the same question before discovery has run, to decide which
+ * items are worth searching at all, so "no candidates yet" does not rule an item out.
+ */
+export function autoApplySkipReason(
+	state: AutoApplyCandidateState,
+	options: { beforeDiscovery?: boolean } = {}
+): AutoApplySkipReason | null {
+	if (!options.beforeDiscovery && !state.hasCandidates) return 'no_candidates';
 	if (state.hasSuccessfulApply) return 'already_applied';
 	if (state.reviewedAt) return 'reviewed';
 	if (state.selectedPosterUrl || state.selectedBackgroundUrl || state.hasChildSelections) {

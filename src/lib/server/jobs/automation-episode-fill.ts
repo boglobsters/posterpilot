@@ -35,6 +35,126 @@ import {
 
 const CHUNK = 200;
 
+type ChosenSet = NonNullable<ReturnType<typeof chosenSetFor>>;
+
+/**
+ * For one chunk of item ids: the shows whose season/episode artwork came from a set, with
+ * that set, and every slot already applied per show. Movies and uncurated shows drop out.
+ */
+async function loadShowSets(
+	serverInstanceId: string,
+	ids: number[]
+): Promise<{
+	withSet: Array<readonly [number, ChosenSet]>;
+	filledByItem: Map<number, Set<string>>;
+}> {
+	const shows = (
+		await db
+			.select({ id: mediaItems.id })
+			.from(mediaItems)
+			.where(
+				and(
+					eq(mediaItems.serverInstanceId, serverInstanceId),
+					inArray(mediaItems.id, ids),
+					eq(mediaItems.type, 'show'),
+					eq(mediaItems.ignored, false),
+					eq(mediaItems.resolved, true)
+				)
+			)
+	).map((row) => row.id);
+	if (!shows.length) return { withSet: [], filledByItem: new Map() };
+
+	const [selections, applied] = await Promise.all([
+		db
+			.select({
+				mediaItemId: childSelections.mediaItemId,
+				kind: childSelections.kind,
+				provider: childSelections.provider,
+				setId: childSelections.setId
+			})
+			.from(childSelections)
+			.where(
+				and(
+					eq(childSelections.serverInstanceId, serverInstanceId),
+					inArray(childSelections.mediaItemId, shows)
+				)
+			),
+		db
+			.select({
+				mediaItemId: appliedPosters.mediaItemId,
+				candidateId: appliedPosters.candidateId,
+				kind: appliedPosters.kind,
+				season: appliedPosters.season,
+				episode: appliedPosters.episode
+			})
+			.from(appliedPosters)
+			.where(
+				and(
+					eq(appliedPosters.serverInstanceId, serverInstanceId),
+					inArray(appliedPosters.mediaItemId, shows),
+					eq(appliedPosters.status, 'success')
+				)
+			)
+	]);
+	// Artwork applied without stored selections (e.g. by this automation's own
+	// auto-apply) still names its set through the candidate it came from.
+	const appliedCandidateIds = [
+		...new Set(applied.map((row) => row.candidateId).filter((id): id is number => id !== null))
+	];
+	const appliedCandidates = new Map<number, { provider: string; setId: string }>();
+	for (let index = 0; index < appliedCandidateIds.length; index += 500) {
+		for (const row of await db
+			.select({
+				id: posterCandidates.id,
+				provider: posterCandidates.provider,
+				setId: posterCandidates.setId
+			})
+			.from(posterCandidates)
+			.where(inArray(posterCandidates.id, appliedCandidateIds.slice(index, index + 500)))) {
+			appliedCandidates.set(row.id, row);
+		}
+	}
+	const storedByItem = new Map<number, ChosenSlotSelection[]>();
+	for (const row of selections) {
+		const list = storedByItem.get(row.mediaItemId) ?? [];
+		list.push(row);
+		storedByItem.set(row.mediaItemId, list);
+	}
+	const appliedByItem = new Map<number, ChosenSlotSelection[]>();
+	const filledByItem = new Map<number, Set<string>>();
+	for (const row of applied) {
+		if (!row.kind) continue;
+		const keys = filledByItem.get(row.mediaItemId) ?? new Set<string>();
+		keys.add(fillSlotKey({ kind: row.kind, season: row.season, episode: row.episode }));
+		filledByItem.set(row.mediaItemId, keys);
+		const source = row.candidateId === null ? undefined : appliedCandidates.get(row.candidateId);
+		if (source && row.season !== null) {
+			const list = appliedByItem.get(row.mediaItemId) ?? [];
+			list.push({ kind: row.kind, provider: source.provider, setId: source.setId });
+			appliedByItem.set(row.mediaItemId, list);
+		}
+	}
+	const withSet = shows
+		.map((id) => [id, chosenSetFor(storedByItem.get(id) ?? appliedByItem.get(id) ?? [])] as const)
+		.filter((entry): entry is readonly [number, NonNullable<ReturnType<typeof chosenSetFor>>] =>
+			Boolean(entry[1])
+		);
+	return { withSet, filledByItem };
+}
+
+/** Shows (among `itemIds`) whose season/episode artwork was chosen from a set. */
+export async function selectSetShowIds(
+	serverInstanceId: string,
+	itemIds: number[]
+): Promise<number[]> {
+	const ids: number[] = [];
+	for (let offset = 0; offset < itemIds.length; offset += CHUNK) {
+		const { withSet } = await loadShowSets(serverInstanceId, itemIds.slice(offset, offset + CHUNK));
+		ids.push(...withSet.map(([id]) => id));
+	}
+	return ids;
+}
+
 /** Per show, the chosen set's candidates for the season-level slots never applied. */
 export async function planEpisodeFillSelections(
 	serverInstanceId: string,
@@ -43,97 +163,7 @@ export async function planEpisodeFillSelections(
 	const result = new Map<number, AutomaticCandidateSelection[]>();
 	for (let offset = 0; offset < itemIds.length; offset += CHUNK) {
 		const ids = itemIds.slice(offset, offset + CHUNK);
-		const shows = (
-			await db
-				.select({ id: mediaItems.id })
-				.from(mediaItems)
-				.where(
-					and(
-						eq(mediaItems.serverInstanceId, serverInstanceId),
-						inArray(mediaItems.id, ids),
-						eq(mediaItems.type, 'show'),
-						eq(mediaItems.ignored, false),
-						eq(mediaItems.resolved, true)
-					)
-				)
-		).map((row) => row.id);
-		if (!shows.length) continue;
-
-		const [selections, applied] = await Promise.all([
-			db
-				.select({
-					mediaItemId: childSelections.mediaItemId,
-					kind: childSelections.kind,
-					provider: childSelections.provider,
-					setId: childSelections.setId
-				})
-				.from(childSelections)
-				.where(
-					and(
-						eq(childSelections.serverInstanceId, serverInstanceId),
-						inArray(childSelections.mediaItemId, shows)
-					)
-				),
-			db
-				.select({
-					mediaItemId: appliedPosters.mediaItemId,
-					candidateId: appliedPosters.candidateId,
-					kind: appliedPosters.kind,
-					season: appliedPosters.season,
-					episode: appliedPosters.episode
-				})
-				.from(appliedPosters)
-				.where(
-					and(
-						eq(appliedPosters.serverInstanceId, serverInstanceId),
-						inArray(appliedPosters.mediaItemId, shows),
-						eq(appliedPosters.status, 'success')
-					)
-				)
-		]);
-		// Artwork applied without stored selections (e.g. by this automation's own
-		// auto-apply) still names its set through the candidate it came from.
-		const appliedCandidateIds = [
-			...new Set(applied.map((row) => row.candidateId).filter((id): id is number => id !== null))
-		];
-		const appliedCandidates = new Map<number, { provider: string; setId: string }>();
-		for (let index = 0; index < appliedCandidateIds.length; index += 500) {
-			for (const row of await db
-				.select({
-					id: posterCandidates.id,
-					provider: posterCandidates.provider,
-					setId: posterCandidates.setId
-				})
-				.from(posterCandidates)
-				.where(inArray(posterCandidates.id, appliedCandidateIds.slice(index, index + 500)))) {
-				appliedCandidates.set(row.id, row);
-			}
-		}
-		const storedByItem = new Map<number, ChosenSlotSelection[]>();
-		for (const row of selections) {
-			const list = storedByItem.get(row.mediaItemId) ?? [];
-			list.push(row);
-			storedByItem.set(row.mediaItemId, list);
-		}
-		const appliedByItem = new Map<number, ChosenSlotSelection[]>();
-		const filledByItem = new Map<number, Set<string>>();
-		for (const row of applied) {
-			if (!row.kind) continue;
-			const keys = filledByItem.get(row.mediaItemId) ?? new Set<string>();
-			keys.add(fillSlotKey({ kind: row.kind, season: row.season, episode: row.episode }));
-			filledByItem.set(row.mediaItemId, keys);
-			const source = row.candidateId === null ? undefined : appliedCandidates.get(row.candidateId);
-			if (source && row.season !== null) {
-				const list = appliedByItem.get(row.mediaItemId) ?? [];
-				list.push({ kind: row.kind, provider: source.provider, setId: source.setId });
-				appliedByItem.set(row.mediaItemId, list);
-			}
-		}
-		const withSet = shows
-			.map((id) => [id, chosenSetFor(storedByItem.get(id) ?? appliedByItem.get(id) ?? [])] as const)
-			.filter((entry): entry is readonly [number, NonNullable<ReturnType<typeof chosenSetFor>>] =>
-				Boolean(entry[1])
-			);
+		const { withSet, filledByItem } = await loadShowSets(serverInstanceId, ids);
 		if (!withSet.length) continue;
 		const candidates = await db
 			.select({

@@ -27,4 +27,26 @@ describe('autoApplySkipReason', () => {
 	] as const)('skips %o as %s', (change, reason) => {
 		expect(autoApplySkipReason({ ...fresh, ...change })).toBe(reason);
 	});
+
+	it('before discovery, still searches an item that has no candidates yet', () => {
+		expect(
+			autoApplySkipReason({ ...fresh, hasCandidates: false }, { beforeDiscovery: true })
+		).toBeNull();
+	});
+
+	it('before discovery, still rules out curated items', () => {
+		for (const change of [
+			{ hasSuccessfulApply: true },
+			{ reviewedAt: new Date(0) },
+			{ selectedPosterUrl: 'https://example.test/p.jpg' },
+			{ externalArtworkChangedAt: new Date(0) }
+		]) {
+			expect(
+				autoApplySkipReason(
+					{ ...fresh, ...change, hasCandidates: false },
+					{ beforeDiscovery: true }
+				)
+			).not.toBeNull();
+		}
+	});
 });

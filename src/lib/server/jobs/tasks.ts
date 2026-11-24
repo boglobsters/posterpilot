@@ -17,8 +17,8 @@ import { shouldReprocessItem } from './incremental';
 import type { JobContext, JobPayload, JobTaskResult } from './types';
 import { resolveMediaServerInstance } from '$lib/server/server-instances';
 import { executeDatabaseFrozenApplyJob } from '$lib/server/plans/apply-runtime';
-import { queueAutomationApply } from './automation-apply';
-import { queueEpisodeFill } from './automation-episode-fill';
+import { queueAutomationApply, selectAutoApplyItemIds } from './automation-apply';
+import { queueEpisodeFill, selectSetShowIds } from './automation-episode-fill';
 import { countApplyPlanProgressUnits } from '$lib/server/plans/apply-executor';
 import { executeFrozenArtworkUndoJob } from '$lib/server/artwork-revisions/undo-runtime';
 import { createCollectionRepository } from '$lib/server/collections/repository';
@@ -866,20 +866,43 @@ export async function runAutomationJob(
 						)
 					)
 			).map((row) => row.id);
+	// Fork-only: the apply action only uses candidates for items nobody has curated and
+	// for shows filling new episodes from their set, so it searches just those. An empty
+	// list must skip discovery: runDiscoverJob reads "no ids" as "the whole library".
+	const applyAction = occurrence.action === 'sync_discover_apply';
+	const discoveryItemIds = applyAction
+		? [
+				...new Set([
+					...(await selectAutoApplyItemIds(occurrence.serverInstanceId, requestedItemIds, {
+						beforeDiscovery: true
+					})),
+					...(await selectSetShowIds(occurrence.serverInstanceId, requestedItemIds))
+				])
+			].sort((left, right) => left - right)
+		: requestedItemIds;
 	await ctx.setPhase('automation_discovery');
-	const discoveryResult = await runDiscoverJob(
-		ctx,
-		{
-			kind: 'discover',
+	if (applyAction) {
+		await logEvent('info', 'automation', 'Discovery limited to titles the apply steps use', {
 			serverInstanceId: occurrence.serverInstanceId,
-			itemIds: requestedItemIds,
-			forceRefresh: occurrence.discoveryInputs.forceRefresh
-		},
-		{
-			libraryScopes: occurrence.libraryScopes,
-			providers: occurrence.discoveryInputs.providers
-		}
-	);
+			searched: discoveryItemIds.length,
+			inScope: requestedItemIds.length
+		});
+	}
+	const discoveryResult: JobTaskResult = discoveryItemIds.length
+		? await runDiscoverJob(
+				ctx,
+				{
+					kind: 'discover',
+					serverInstanceId: occurrence.serverInstanceId,
+					itemIds: discoveryItemIds,
+					forceRefresh: occurrence.discoveryInputs.forceRefresh
+				},
+				{
+					libraryScopes: occurrence.libraryScopes,
+					providers: occurrence.discoveryInputs.providers
+				}
+			)
+		: { summary: { processed: 0, succeeded: 0, failed: 0, skipped: 0, interrupted: 0 } };
 	if (occurrence.action === 'sync_discover_apply' && !ctx.isCancelled()) {
 		// Fork-only: queue an automatic apply for the items nobody has curated. A failure
 		// here is logged and never fails the sync/discovery work already completed.
@@ -887,7 +910,7 @@ export async function runAutomationJob(
 		try {
 			await queueAutomationApply({
 				serverInstanceId: occurrence.serverInstanceId,
-				itemIds: requestedItemIds,
+				itemIds: discoveryItemIds,
 				parentJobId: ctx.jobId ?? null
 			});
 		} catch (error) {
@@ -901,7 +924,7 @@ export async function runAutomationJob(
 		try {
 			await queueEpisodeFill({
 				serverInstanceId: occurrence.serverInstanceId,
-				itemIds: requestedItemIds,
+				itemIds: discoveryItemIds,
 				parentJobId: ctx.jobId ?? null
 			});
 		} catch (error) {
