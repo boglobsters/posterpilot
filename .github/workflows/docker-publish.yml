@@ -54,7 +54,10 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/diegopeixoto/posterpilot
+          # Derived from the repository running the workflow: upstream still publishes
+          # ghcr.io/diegopeixoto/posterpilot, and a fork publishes under its own owner
+          # instead of failing to push to a package it cannot write.
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=${{ inputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
