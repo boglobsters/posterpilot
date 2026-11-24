@@ -20,7 +20,11 @@ export interface AutoApplyCandidateState {
 }
 
 export type AutoApplySkipReason =
-	'no_candidates' | 'reviewed' | 'changed_outside_posterpilot' | 'hand_picked' | 'already_applied';
+	| 'no_candidates'
+	| 'reviewed'
+	| 'changed_outside_posterpilot'
+	| 'hand_picked'
+	| 'already_applied';
 
 /**
  * Why an automation would leave this item alone, or null if it may apply artwork.
