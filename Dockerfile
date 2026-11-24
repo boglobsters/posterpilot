@@ -34,4 +34,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 	CMD bun -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["bun", "./build/index.js"]
+# --smol makes Bun collect garbage more often and keep a smaller heap. Without it Bun sizes
+# its heap from the host's RAM, not the container's memory limit, so after a library sync
+# the server sat at its peak (~1.6 GB) long after the work was done.
+CMD ["bun", "--smol", "./build/index.js"]
