@@ -20,7 +20,11 @@ export interface AutoApplyCandidateState {
 }
 
 export type AutoApplySkipReason =
-	'no_candidates' | 'reviewed' | 'changed_outside_posterpilot' | 'hand_picked' | 'already_applied';
+	| 'no_candidates'
+	| 'reviewed'
+	| 'changed_outside_posterpilot'
+	| 'hand_picked'
+	| 'already_applied';
 
 export function autoApplySkipReason(state: AutoApplyCandidateState): AutoApplySkipReason | null {
 	if (!state.hasCandidates) return 'no_candidates';
