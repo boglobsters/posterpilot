@@ -8,6 +8,7 @@ import { resolveDataPaths } from '$lib/server/data-paths';
 import { withBusyRetry } from './busy-retry';
 import { withDedicatedTransactions } from './dedicated-transactions';
 import { createStatementCollector, withStatementCollection } from './statement-collection';
+import { withSlowSqlLog } from './slow-sql';
 import { processPendingRestore } from './pending-restore';
 import * as schema from './schema';
 
@@ -62,13 +63,15 @@ async function prepareConnection(connection: Client): Promise<void> {
 // withStatementCollection frees libsql's per-query native statements every few thousand
 // queries (see db/statement-collection.ts); without it a sync left ~1.5 GB behind.
 export const databaseClient = withBusyRetry(
-	withStatementCollection(
-		dataPaths.databaseFile
-			? withDedicatedTransactions(baseClient, () => createClient(clientConfig), {
-					prepareConnection
-				})
-			: baseClient,
-		createStatementCollector()
+	withSlowSqlLog(
+		withStatementCollection(
+			dataPaths.databaseFile
+				? withDedicatedTransactions(baseClient, () => createClient(clientConfig), {
+						prepareConnection
+					})
+				: baseClient,
+			createStatementCollector()
+		)
 	)
 );
 
