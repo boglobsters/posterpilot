@@ -672,20 +672,34 @@ export function createAutomationStore(database: Database, options: AutomationSto
 		eventIdentity: string;
 		occurredAt: Date;
 		itemIds?: number[];
+		/**
+		 * Fork-only (boglobsters/posterpilot): set by an authenticated webhook delivery.
+		 * A webhook may start any enabled automation that has its webhook turned on,
+		 * whatever its own trigger, so a timed automation can also react to Sonarr or
+		 * Radarr. Internal sync events still reach only matching event automations.
+		 */
+		viaWebhook?: boolean;
 	}): Promise<AutomationOccurrencePublic> {
 		const row = await getRow(input.scheduleId, input.serverInstanceId);
-		if (
-			!row.enabled ||
-			row.pausedAt ||
-			row.triggerType !== 'event' ||
-			row.eventType !== input.eventType
-		) {
+		if (!row.enabled || row.pausedAt) storeError('automation_event_not_eligible');
+		const matchesTrigger = row.triggerType === 'event' && row.eventType === input.eventType;
+		if (!matchesTrigger && !(input.viaWebhook && row.webhookTokenHash)) {
 			storeError('automation_event_not_eligible');
 		}
 		const now = validNow(clock);
 		const occurredAt = new Date(input.occurredAt.getTime());
 		if (!Number.isFinite(occurredAt.getTime())) storeError('invalid_event_time');
-		const definition = definitionFromRow(row);
+		// A webhook run of a timed (or differently triggered) automation is frozen as the
+		// event that actually started it, so the occurrence describes this run truthfully.
+		const definition: NormalizedAutomationDefinition = matchesTrigger
+			? definitionFromRow(row)
+			: {
+					...definitionFromRow(row),
+					triggerType: 'event',
+					eventType: input.eventType,
+					intervalMinutes: null,
+					localTime: null
+				};
 		const logicalKey = scheduleLogicalKey({
 			scheduleId: row.id,
 			triggerType: 'event',
@@ -830,7 +844,8 @@ export function createAutomationStore(database: Database, options: AutomationSto
 			eventType: input.eventType,
 			eventIdentity: input.eventIdentity,
 			occurredAt: input.occurredAt,
-			itemIds: sourceItemIds.map((sourceId) => idBySource.get(sourceId)!)
+			itemIds: sourceItemIds.map((sourceId) => idBySource.get(sourceId)!),
+			viaWebhook: true
 		});
 	}
 

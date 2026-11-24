@@ -15,6 +15,7 @@ import {
 	serverInstances
 } from '$lib/server/db/schema';
 import { createAutomationStore } from './store';
+import { normalizeFrozenAutomationOccurrencePayload } from './model';
 
 let directory: string;
 let client: Client;
@@ -292,6 +293,47 @@ describe('automation store', () => {
 		await expect(
 			repository.deliverWebhook({ ...delivery, eventIdentity: 'delivery-46' })
 		).rejects.toMatchObject({ code: 'webhook_unauthorized' });
+	});
+
+	it('lets a webhook start a timed automation, but not an internal sync event (fork-only)', async () => {
+		const repository = store();
+		const created = await repository.create(definition());
+		const before = (await repository.list('server-a'))[0].nextRunAt;
+		const internal = {
+			scheduleId: created.id,
+			serverInstanceId: 'server-a',
+			eventType: 'sync_completed' as const,
+			eventIdentity: 'job-1-sync_completed',
+			occurredAt: new Date('2026-07-10T12:05:00.000Z')
+		};
+		await expect(repository.materializeEventOccurrence(internal)).rejects.toMatchObject({
+			code: 'automation_event_not_eligible'
+		});
+		await expect(
+			repository.materializeEventOccurrence({ ...internal, viaWebhook: true })
+		).rejects.toMatchObject({ code: 'automation_event_not_eligible' });
+
+		const { token } = await repository.rotateWebhookToken(created.id, 'server-a');
+		const occurrence = await repository.deliverWebhook({
+			scheduleId: created.id,
+			token,
+			eventType: 'sync_completed',
+			eventIdentity: 'sonarr-Download-1',
+			occurredAt: new Date('2026-07-10T12:05:00.000Z')
+		});
+		expect(occurrence.status).toBe('pending');
+		const raw = (await database.select().from(automationOccurrences))[0];
+		expect(raw.triggerType).toBe('event');
+		const payload = normalizeFrozenAutomationOccurrencePayload(raw.payload);
+		expect(payload.trigger).toMatchObject({
+			type: 'event',
+			eventType: 'sync_completed',
+			eventIdentity: 'sonarr-Download-1'
+		});
+		// The automation's own timer is untouched.
+		const after = (await repository.list('server-a'))[0];
+		expect(after.triggerType).toBe('daily');
+		expect(after.nextRunAt).toBe(before);
 	});
 
 	it('pauses an automation at its consecutive failure threshold', async () => {
