@@ -85,8 +85,9 @@ export interface AutomaticArtworkSelection {
 	children: AutomaticCandidateSelection[];
 }
 
-function normalizeSlot(
-	candidate: AutomaticCandidateInput
+/** The apply slot a candidate fills, or null when its shape fits no slot. */
+export function normalizeSlot(
+	candidate: Pick<AutomaticCandidateInput, 'kind' | 'season' | 'episode'>
 ): AutomaticCandidateSelection['slot'] | null {
 	if (candidate.kind === 'title_card') {
 		if (candidate.season === null || candidate.episode === null) return null;

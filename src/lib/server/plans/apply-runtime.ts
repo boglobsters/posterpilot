@@ -40,7 +40,11 @@ import {
 } from './apply-executor';
 import { type ApplyPlanOperation, type FrozenApplyJobPayload } from './apply-plan';
 import { assertApplyPlanFresh } from './apply-plan-validation';
-import { createDatabaseApplyPlanner, loadDatabaseApplyPlannerItemData } from './apply-planner-db';
+import {
+	createDatabaseApplyPlanner,
+	loadDatabaseApplyPlannerItemData,
+	type DatabaseApplyPlannerOptions
+} from './apply-planner-db';
 import {
 	ApplyPlannerError,
 	type ApplyItemRef,
@@ -93,9 +97,13 @@ export async function resolveDatabaseApplyTargets(
 	return resolveScopedApplyTargets(db, itemIds, expectedServerInstanceId);
 }
 
-export async function previewDatabaseArtworkApply(request: PlanArtworkApplyRequest) {
+export async function previewDatabaseArtworkApply(
+	request: PlanArtworkApplyRequest,
+	options: Pick<DatabaseApplyPlannerOptions, 'selectAutomatic'> = {}
+) {
 	const planner = createDatabaseApplyPlanner({
-		resolveDestinationSlots: requestDestinationResolver()
+		resolveDestinationSlots: requestDestinationResolver(),
+		...options
 	});
 	return exactApplyPreviewResponse(await planner(request));
 }

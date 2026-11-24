@@ -18,6 +18,7 @@ import type { JobContext, JobPayload, JobTaskResult } from './types';
 import { resolveMediaServerInstance } from '$lib/server/server-instances';
 import { executeDatabaseFrozenApplyJob } from '$lib/server/plans/apply-runtime';
 import { queueAutomationApply } from './automation-apply';
+import { queueEpisodeFill } from './automation-episode-fill';
 import { countApplyPlanProgressUnits } from '$lib/server/plans/apply-executor';
 import { executeFrozenArtworkUndoJob } from '$lib/server/artwork-revisions/undo-runtime';
 import { createCollectionRepository } from '$lib/server/collections/repository';
@@ -891,6 +892,20 @@ export async function runAutomationJob(
 			});
 		} catch (error) {
 			await logEvent('warn', 'automation', 'Automatic apply could not be queued', {
+				serverInstanceId: occurrence.serverInstanceId,
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
+		// Fork-only: shows that already have a set get artwork for seasons and episodes
+		// added since, from that same set.
+		try {
+			await queueEpisodeFill({
+				serverInstanceId: occurrence.serverInstanceId,
+				itemIds: requestedItemIds,
+				parentJobId: ctx.jobId ?? null
+			});
+		} catch (error) {
+			await logEvent('warn', 'automation', 'New episode artwork could not be queued', {
 				serverInstanceId: occurrence.serverInstanceId,
 				error: error instanceof Error ? error.message : String(error)
 			});

@@ -327,6 +327,12 @@ export interface DatabaseApplyPlannerOptions {
 	 */
 	resolveDestinationSlots(input: ResolveApplyDestinationsInput): Promise<DestinationSlotSnapshot[]>;
 	loadDefaults?: () => Promise<ApplyPlannerDefaults>;
+	/**
+	 * Fork-only: replace the scorer for `auto` plans, e.g. to fill only the missing
+	 * slots of a show from the set already chosen for it. Every slot it returns is
+	 * still frozen against, and re-validated against, the live candidate rows.
+	 */
+	selectAutomatic?: ApplyPlannerDependencies['selectAutomatic'];
 	clock?: () => Date;
 }
 
@@ -338,7 +344,8 @@ export function createDatabaseApplyPlanner(options: DatabaseApplyPlannerOptions)
 	const dependencies: ApplyPlannerDependencies = {
 		loadItemData: loadDatabaseApplyPlannerItemData,
 		loadDefaults: options.loadDefaults ?? loadEffectiveDefaults,
-		selectAutomatic: (ref, inputs) => autoSelectArtwork(ref.mediaItemId, inputs),
+		selectAutomatic:
+			options.selectAutomatic ?? ((ref, inputs) => autoSelectArtwork(ref.mediaItemId, inputs)),
 		resolveDestinationSlots: options.resolveDestinationSlots,
 		persistPlan: (input) => operationPlanStore.create(input),
 		clock: options.clock
