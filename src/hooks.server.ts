@@ -26,6 +26,11 @@ import { maintenanceBlocksRequest } from '$lib/server/maintenance-http';
 import { reconcileThumbCacheDisk } from '$lib/server/posters/thumb-cache';
 import { getAppearanceState } from '$lib/server/appearance';
 import { formatRequestError } from '$lib/server/db/error-detail';
+import { resolveDataPaths } from '$lib/server/data-paths';
+import { startStallProfiler } from '$lib/server/diag/profiler';
+
+// TEMPORARY diag/profile: capture what the main thread runs while the event loop stalls.
+await startStallProfiler(resolveDataPaths(env.DATABASE_URL, env.APP_KEY_FILE).dataDirectory);
 
 // Run database migrations once at server startup, before any request is handled.
 await migrateDb();
