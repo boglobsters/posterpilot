@@ -5,7 +5,7 @@
 	import { jobStatusLabel } from '$lib/job-labels';
 
 	type TriggerType = 'interval' | 'daily' | 'event';
-	type Action = 'sync' | 'sync_discover';
+	type Action = 'sync' | 'sync_discover' | 'sync_discover_apply';
 	type Schedule = {
 		id: string;
 		serverInstanceId: string;
@@ -532,8 +532,15 @@
 				<select bind:value={action} aria-label={m.automation_action()} class="input mt-1 w-full">
 					<option value="sync_discover">{m.automation_action_sync_discover()}</option>
 					<option value="sync">{m.automation_action_sync()}</option>
+					<option value="sync_discover_apply">{m.automation_action_sync_discover_apply()}</option>
 				</select>
-				<span class="mt-1 block text-xs text-text-faint">{m.automation_action_hint()}</span>
+				{#if action === 'sync_discover_apply'}
+					<span class="mt-1 block text-xs text-amber-300">
+						{m.automation_action_apply_warning()}
+					</span>
+				{:else}
+					<span class="mt-1 block text-xs text-text-faint">{m.automation_action_hint()}</span>
+				{/if}
 			</label>
 
 			<fieldset class="sm:col-span-2">

@@ -34,6 +34,21 @@ describe('automation definition', () => {
 		});
 	});
 
+	it('accepts the fork-only sync_discover_apply action end to end', () => {
+		const definition = normalizeAutomationDefinition({ ...input(), action: 'sync_discover_apply' });
+		expect(definition.action).toBe('sync_discover_apply');
+		const occurrence = freezeAutomationOccurrence({
+			automationId: 'auto-1',
+			definition,
+			logicalKey: 'auto-1:2026-07-10T05:30:00.000Z',
+			scheduledFor: new Date('2026-07-10T05:30:00.000Z'),
+			frozenAt: new Date('2026-07-10T05:30:01.000Z')
+		});
+		expect(normalizeFrozenAutomationOccurrencePayload(occurrence).action).toBe(
+			'sync_discover_apply'
+		);
+	});
+
 	it('calculates the first enabled run and leaves event triggers without a timer', () => {
 		const now = new Date('2026-07-10T12:00:00.000Z');
 		expect(

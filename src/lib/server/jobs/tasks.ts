@@ -17,6 +17,7 @@ import { shouldReprocessItem } from './incremental';
 import type { JobContext, JobPayload, JobTaskResult } from './types';
 import { resolveMediaServerInstance } from '$lib/server/server-instances';
 import { executeDatabaseFrozenApplyJob } from '$lib/server/plans/apply-runtime';
+import { queueAutomationApply } from './automation-apply';
 import { countApplyPlanProgressUnits } from '$lib/server/plans/apply-executor';
 import { executeFrozenArtworkUndoJob } from '$lib/server/artwork-revisions/undo-runtime';
 import { createCollectionRepository } from '$lib/server/collections/repository';
@@ -878,6 +879,23 @@ export async function runAutomationJob(
 			providers: occurrence.discoveryInputs.providers
 		}
 	);
+	if (occurrence.action === 'sync_discover_apply' && !ctx.isCancelled()) {
+		// Fork-only: queue an automatic apply for the items nobody has curated. A failure
+		// here is logged and never fails the sync/discovery work already completed.
+		await ctx.setPhase('automation_apply');
+		try {
+			await queueAutomationApply({
+				serverInstanceId: occurrence.serverInstanceId,
+				itemIds: requestedItemIds,
+				parentJobId: ctx.jobId ?? null
+			});
+		} catch (error) {
+			await logEvent('warn', 'automation', 'Automatic apply could not be queued', {
+				serverInstanceId: occurrence.serverInstanceId,
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
+	}
 	return {
 		summary: {
 			processed: syncResult.summary.processed + discoveryResult.summary.processed,

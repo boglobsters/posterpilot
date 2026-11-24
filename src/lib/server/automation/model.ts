@@ -9,7 +9,9 @@ import {
 } from './schedule';
 
 const AUTOMATION_EVENT_TYPES = ['sync_completed', 'new_items'] as const;
-const AUTOMATION_ACTIONS = ['sync', 'sync_discover'] as const;
+// sync_discover_apply is a fork-only addition (boglobsters/posterpilot): after discovery it
+// applies the top-scored artwork to items nobody has curated yet. Never proposed upstream.
+const AUTOMATION_ACTIONS = ['sync', 'sync_discover', 'sync_discover_apply'] as const;
 const AUTOMATION_PROVIDER_IDS = ['mediux', 'tmdb', 'fanarttv', 'theposterdb'] as const;
 
 export type AutomationEventType = (typeof AUTOMATION_EVENT_TYPES)[number];

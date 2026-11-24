@@ -82,6 +82,8 @@ export function jobPhaseLabel(phase: string | null, status = 'running'): string 
 			return m.jobs_phase_automation_sync();
 		case 'automation_discovery':
 			return m.jobs_phase_automation_discovery();
+		case 'automation_apply':
+			return m.jobs_phase_automation_apply();
 		default:
 			return m.jobs_phase_unknown();
 	}

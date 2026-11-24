@@ -1180,7 +1180,7 @@ export const automationSchedules = sqliteTable(
 		normalizedName: text('normalized_name').notNull(),
 		enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
 		triggerType: text('trigger_type', { enum: ['interval', 'daily', 'event'] }).notNull(),
-		action: text('action', { enum: ['sync', 'sync_discover'] })
+		action: text('action', { enum: ['sync', 'sync_discover', 'sync_discover_apply'] })
 			.notNull()
 			.default('sync_discover'),
 		timezone: text('timezone').notNull(),
