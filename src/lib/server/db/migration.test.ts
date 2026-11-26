@@ -24,7 +24,8 @@ const MIGRATIONS = [
 	'0013_same_starfox.sql',
 	'0014_applied_posters_item_index.sql',
 	'0015_drop_cached_html_pages.sql',
-	'0016_scope_trigger_skip_unchanged.sql'
+	'0016_scope_trigger_skip_unchanged.sql',
+	'0017_candidate_fk_indexes.sql'
 ] as const;
 
 const clients: Client[] = [];
@@ -819,6 +820,21 @@ describe('0008 multi-server foundation migration', () => {
 			expect(String(row.sql)).toContain(
 				'WHEN OLD.`server_instance_id` IS NOT NEW.`server_instance_id`'
 			);
+		}
+	});
+
+	it('indexes every reference to a poster candidate so deleting candidates stays cheap', async () => {
+		const client = memoryClient();
+		await applyThrough(client, 17);
+		// Rediscovery deletes and re-inserts a title's candidates; each delete makes SQLite
+		// null out references to the row. These lookups must use an index, not a scan.
+		for (const table of ['applied_posters', 'artwork_revisions', 'child_selections']) {
+			const plan = await client.execute({
+				sql: `explain query plan select 1 from ${table} where candidate_id = ?`,
+				args: [1]
+			});
+			const detail = plan.rows.map((row) => String(row.detail)).join(' ');
+			expect(detail).toContain(`USING COVERING INDEX ${table}_candidate_idx`);
 		}
 	});
 
