@@ -120,6 +120,13 @@
       "when": 1795547447296,
       "tag": "0016_scope_trigger_skip_unchanged",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795659115419,
+      "tag": "0017_candidate_fk_indexes",
+      "breakpoints": true
     }
   ]
 }

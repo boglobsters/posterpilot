@@ -266,7 +266,11 @@ export const childSelections = sqliteTable(
 			.where(sql`${t.episode} is null`),
 		uniqueIndex('child_selections_episode_slot')
 			.on(t.serverInstanceId, t.mediaItemId, t.kind, t.season, t.episode)
-			.where(sql`${t.episode} is not null`)
+			.where(sql`${t.episode} is not null`),
+		// Deleting a poster candidate (every rediscovery replaces a title's candidates)
+		// makes SQLite null out each reference to it; without an index on candidate_id that
+		// is a full scan of this table per deleted row.
+		index('child_selections_candidate_idx').on(t.candidateId)
 	]
 );
 
@@ -310,7 +314,11 @@ export const appliedPosters = sqliteTable(
 		// Per-item "last successful application" lookups (the library's recent sort,
 		// spotlight and "unchanged" filter) correlate on media_item_id alone; without
 		// this they scanned the whole table once per library item.
-		index('applied_posters_item_status_applied_idx').on(t.mediaItemId, t.status, t.appliedAt)
+		index('applied_posters_item_status_applied_idx').on(t.mediaItemId, t.status, t.appliedAt),
+		// Deleting a poster candidate (every rediscovery replaces a title's candidates)
+		// makes SQLite null out each reference to it; without an index on candidate_id that
+		// is a full scan of this table per deleted row.
+		index('applied_posters_candidate_idx').on(t.candidateId)
 	]
 );
 
@@ -794,7 +802,11 @@ export const artworkRevisions = sqliteTable(
 	(t) => [
 		index('artwork_revisions_item_timeline_idx').on(t.serverInstanceId, t.mediaItemId, t.createdAt),
 		index('artwork_revisions_group_idx').on(t.groupId),
-		index('artwork_revisions_undo_idx').on(t.undoOfRevisionId)
+		index('artwork_revisions_undo_idx').on(t.undoOfRevisionId),
+		// Deleting a poster candidate (every rediscovery replaces a title's candidates)
+		// makes SQLite null out each reference to it; without an index on candidate_id that
+		// is a full scan of this table per deleted row.
+		index('artwork_revisions_candidate_idx').on(t.candidateId)
 	]
 );
 
